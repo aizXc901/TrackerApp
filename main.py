@@ -250,6 +250,7 @@ class ModernHabitTrackerApp:
         # Центрируем окно
         self.center_window()
         self.setup_ui()
+        self.setup_reminders()
 
     def exit_fullscreen(self):
         """Выход из полноэкранного режима по Escape"""
@@ -869,9 +870,77 @@ class ModernHabitTrackerApp:
         )
         quit_radio.pack(side="left")
 
-        # Фрейм для кнопок - ПЕРЕМЕЩАЕМ КНОПКИ ВНИЗ И ДЕЛАЕМ ИХ ВИДИМЫМИ
+        # Напоминание (только для привычек развития)
+        ctk.CTkLabel(
+            form_card,
+            text="⏰ Напоминание (только для развития):",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(pady=(20, 5), anchor="w", padx=30)
+
+        reminder_frame = ctk.CTkFrame(form_card, fg_color="transparent")
+        reminder_frame.pack(fill="x", padx=30, pady=5)
+
+        # Выбор времени
+        hours = [f"{i:02d}" for i in range(24)]
+        minutes = [f"{i:02d}" for i in range(60)]
+
+        hour_var = ctk.StringVar(value="09")
+        minute_var = ctk.StringVar(value="00")
+
+        hour_combo = ctk.CTkComboBox(
+            reminder_frame,
+            values=hours,
+            variable=hour_var,
+            width=80
+        )
+        hour_combo.pack(side="left", padx=(0, 5))
+
+        ctk.CTkLabel(
+            reminder_frame,
+            text=":",
+            font=ctk.CTkFont(size=14)
+        ).pack(side="left")
+
+        minute_combo = ctk.CTkComboBox(
+            reminder_frame,
+            values=minutes,
+            variable=minute_var,
+            width=80
+        )
+        minute_combo.pack(side="left", padx=(5, 10))
+
+        # Чекбокс для включения/выключения напоминания
+        reminder_var = ctk.BooleanVar(value=False)
+
+        def on_habit_type_change():
+            """Обновление доступности напоминания при смене типа привычки"""
+            if habit_type_var.get() == "develop":
+                reminder_checkbox.configure(state="normal")
+                hour_combo.configure(state="normal")
+                minute_combo.configure(state="normal")
+            else:
+                reminder_checkbox.configure(state="disabled")
+                hour_combo.configure(state="disabled")
+                minute_combo.configure(state="disabled")
+                reminder_var.set(False)
+
+        reminder_checkbox = ctk.CTkCheckBox(
+            reminder_frame,
+            text="Включить напоминание",
+            variable=reminder_var,
+            command=on_habit_type_change
+        )
+        reminder_checkbox.pack(side="left")
+
+        # Изначально настраиваем состояние
+        on_habit_type_change()
+
+        # Привязываем изменение типа привычки к обновлению состояния напоминаний
+        habit_type_var.trace('w', lambda *args: on_habit_type_change())
+
+        # Фрейм для кнопок
         buttons_frame = ctk.CTkFrame(form_card, fg_color="transparent")
-        buttons_frame.pack(side="bottom", pady=30, fill="x", padx=30)  # Используем side="bottom"
+        buttons_frame.pack(side="bottom", pady=30, fill="x", padx=30)
 
         # Настройка сетки для кнопок
         buttons_frame.grid_columnconfigure(0, weight=1)
@@ -882,14 +951,19 @@ class ModernHabitTrackerApp:
             description = desc_entry.get().strip()
             habit_type = habit_type_var.get()
 
+            # Формируем время напоминания
+            reminder_time = None
+            if habit_type == "develop" and reminder_var.get():
+                reminder_time = f"{hour_var.get()}:{minute_var.get()}"
+
             if not name:
                 self.show_error_message("Введите название привычки!")
                 return
 
             try:
-                habit_id = self.db.add_habit(name, description, habit_type, 1)
+                habit_id = self.db.add_habit(name, description, habit_type, 1, reminder_time)
                 self.show_success_message("Привычка успешно добавлена!")
-                self.update_sidebar_stats()  # Обновляем статистику
+                self.update_sidebar_stats()
                 self.show_welcome_screen()
             except Exception as e:
                 self.show_error_message(f"Ошибка: {str(e)}")
@@ -1586,6 +1660,114 @@ class ModernHabitTrackerApp:
             height=35
         )
         cancel_btn.pack(side="left", padx=10)
+
+    def setup_reminders(self):
+        """Настройка системы напоминаний"""
+        self.check_reminders()
+
+    def check_reminders(self):
+        """Проверка напоминаний каждую минуту"""
+        try:
+            habits_with_reminders = self.db.get_habits_with_reminders()
+            current_time = datetime.now().strftime("%H:%M")
+
+            for habit in habits_with_reminders:
+                habit_id, name, description, habit_type, points, reminder_time, created_date = habit
+                if reminder_time and reminder_time == current_time:
+                    self.show_reminder_notification(name, description)
+
+        except Exception as e:
+            print(f"Ошибка при проверке напоминаний: {e}")
+
+        # Проверяем каждую минуту
+        self.root.after(60000, self.check_reminders)
+
+    def show_reminder_notification(self, habit_name, description):
+        """Показать напоминание"""
+        reminder_window = ctk.CTkToplevel(self.root)
+        reminder_window.title("🔔 Напоминание о привычке")
+        reminder_window.geometry("400x250")
+        reminder_window.transient(self.root)
+        reminder_window.grab_set()
+
+        # Центрируем
+        reminder_window.update_idletasks()
+        x = (reminder_window.winfo_screenwidth() // 2) - (400 // 2)
+        y = (reminder_window.winfo_screenheight() // 2) - (250 // 2)
+        reminder_window.geometry(f"400x250+{x}+{y}")
+
+        main_frame = ctk.CTkFrame(reminder_window, fg_color="#FFA500", corner_radius=15)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+        # Иконка и заголовок
+        icon_label = ctk.CTkLabel(
+            main_frame,
+            text="🔔",
+            font=ctk.CTkFont(size=40)
+        )
+        icon_label.pack(pady=10)
+
+        title_label = ctk.CTkLabel(
+            main_frame,
+            text="Время для привычки!",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color="#ffffff"
+        )
+        title_label.pack(pady=5)
+
+        habit_label = ctk.CTkLabel(
+            main_frame,
+            text=f"Привычка: {habit_name}",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color="#ffffff"
+        )
+        habit_label.pack(pady=5)
+
+        if description:
+            desc_label = ctk.CTkLabel(
+                main_frame,
+                text=description,
+                font=ctk.CTkFont(size=12),
+                text_color="#ffffff",
+                wraplength=350
+            )
+            desc_label.pack(pady=5)
+
+        def mark_completed_and_close():
+            """Отметить выполненной и закрыть"""
+            today = date.today()
+            # Находим ID привычки
+            habits = self.db.get_all_habits()
+            for habit in habits:
+                if habit[1] == habit_name:
+                    self.db.mark_habit_completed(habit[0], today)
+                    self.show_success_message(f"Привычка '{habit_name}' отмечена как выполненная!")
+                    break
+            reminder_window.destroy()
+            self.update_sidebar_stats()
+
+        buttons_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        buttons_frame.pack(pady=15)
+
+        completed_btn = ctk.CTkButton(
+            buttons_frame,
+            text="✅ Выполнено",
+            command=mark_completed_and_close,
+            fg_color="#2AA876",
+            hover_color="#218c61",
+            width=120
+        )
+        completed_btn.pack(side="left", padx=5)
+
+        close_btn = ctk.CTkButton(
+            buttons_frame,
+            text="❌ Закрыть",
+            command=reminder_window.destroy,
+            fg_color="#FF6B6B",
+            hover_color="#e05555",
+            width=120
+        )
+        close_btn.pack(side="left", padx=5)
 
     def run(self):
         """Запуск приложения"""

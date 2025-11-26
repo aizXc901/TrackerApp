@@ -355,6 +355,30 @@ class Database:
 
         return count > 0
 
+    def get_habits_with_reminders(self):
+        """Получение привычек с напоминаниями"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT * FROM habits 
+            WHERE reminder_time IS NOT NULL AND habit_type = 'develop'
+        ''')
+        habits = cursor.fetchall()
+        conn.close()
+        return habits
+
+    def update_reminder_time(self, habit_id, reminder_time):
+        """Обновление времени напоминания"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE habits 
+            SET reminder_time = ? 
+            WHERE id = ?
+        ''', (reminder_time, habit_id))
+        conn.commit()
+        conn.close()
+
     def delete_habit(self, habit_id):
         """Удаление привычки и всех связанных данных"""
         # Сначала проверяем, существует ли привычка
