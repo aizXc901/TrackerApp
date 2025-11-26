@@ -2,6 +2,13 @@ import customtkinter as ctk
 from datetime import datetime, date
 import calendar
 from typing import Optional
+import os
+try:
+    from PIL import Image, ImageTk
+    HAS_PIL = True
+except ImportError:
+    HAS_PIL = False
+    print("Pillow не установлен. Функционал изображений будет ограничен.")
 
 
 class ModernCalendarWidget:
@@ -314,6 +321,7 @@ class ModernHabitTrackerApp:
         buttons = [
             ("📅", "Календарь", self.show_calendar),
             ("➕", "Новая привычка", self.add_habit),
+            ("📝", "Заметки", self.show_notes),  # <-- ДОБАВЬТЕ ЭТУ СТРОЧКУ
             ("📊", "Отчеты", self.show_reports)
         ]
 
@@ -996,6 +1004,563 @@ class ModernHabitTrackerApp:
 
         # Фокус на поле ввода названия
         name_entry.focus()
+
+    def show_notes(self):
+        """Показать функционал заметок"""
+        for widget in self.main_content.winfo_children():
+            widget.destroy()
+
+        main_container = ctk.CTkFrame(self.main_content, fg_color="transparent")
+        main_container.pack(fill="both", expand=True, padx=20, pady=20)
+
+        # Заголовок
+        title_label = ctk.CTkLabel(
+            main_container,
+            text="📝 Заметки и размышления",
+            font=ctk.CTkFont(size=24, weight="bold")
+        )
+        title_label.pack(pady=20)
+
+        # Две колонки
+        content_frame = ctk.CTkFrame(main_container, fg_color="transparent")
+        content_frame.pack(fill="both", expand=True)
+
+        # Левая колонка - форма добавления заметки
+        left_frame = ctk.CTkFrame(content_frame, fg_color="transparent")
+        left_frame.pack(side="left", fill="both", expand=True, padx=(0, 15))
+
+        # Правая колонка - список заметок
+        right_frame = ctk.CTkFrame(content_frame, width=400, corner_radius=15, fg_color="#2b2b2b")
+        right_frame.pack(side="right", fill="y", padx=(15, 0))
+        right_frame.pack_propagate(False)
+
+        # Форма добавления заметки
+        self.create_note_form(left_frame)
+
+        # Список заметок
+        self.create_notes_list(right_frame)
+
+    def create_note_form(self, parent):
+        """Создать форму для добавления заметки"""
+        form_card = ctk.CTkFrame(parent, corner_radius=20, fg_color="#2b2b2b")
+        form_card.pack(fill="both", expand=True, pady=10)
+
+        # Заголовок формы
+        form_title = ctk.CTkLabel(
+            form_card,
+            text="✏️ Новая заметка",
+            font=ctk.CTkFont(size=18, weight="bold")
+        )
+        form_title.pack(pady=20)
+
+        # Дата заметки
+        ctk.CTkLabel(
+            form_card,
+            text="Дата заметки:",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(pady=(10, 5), anchor="w", padx=30)
+
+        # Используем текущую дату по умолчанию
+        current_date = date.today()
+        self.note_date_var = ctk.StringVar(value=current_date.strftime("%d.%m.%Y"))
+
+        date_entry = ctk.CTkEntry(
+            form_card,
+            textvariable=self.note_date_var,
+            height=40,
+            corner_radius=10,
+            font=ctk.CTkFont(size=13)
+        )
+        date_entry.pack(pady=5, fill="x", padx=30)
+
+        # Заголовок заметки
+        ctk.CTkLabel(
+            form_card,
+            text="Заголовок:",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(pady=(15, 5), anchor="w", padx=30)
+
+        self.note_title_entry = ctk.CTkEntry(
+            form_card,
+            placeholder_text="Краткий заголовок заметки",
+            height=40,
+            corner_radius=10,
+            font=ctk.CTkFont(size=13)
+        )
+        self.note_title_entry.pack(pady=5, fill="x", padx=30)
+
+        # Текст заметки
+        ctk.CTkLabel(
+            form_card,
+            text="Текст заметки:",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(pady=(15, 5), anchor="w", padx=30)
+
+        self.note_text_area = ctk.CTkTextbox(
+            form_card,
+            height=120,
+            corner_radius=10,
+            font=ctk.CTkFont(size=13),
+            wrap="word"
+        )
+        self.note_text_area.pack(pady=5, fill="x", padx=30)
+
+        # Загрузка изображения
+        ctk.CTkLabel(
+            form_card,
+            text="Изображение (опционально):",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(pady=(15, 5), anchor="w", padx=30)
+
+        image_frame = ctk.CTkFrame(form_card, fg_color="transparent")
+        image_frame.pack(fill="x", padx=30, pady=5)
+
+        self.note_image_path = None
+        self.note_image_label = ctk.CTkLabel(
+            image_frame,
+            text="Файл не выбран",
+            font=ctk.CTkFont(size=12),
+            text_color="#888888"
+        )
+        self.note_image_label.pack(side="left")
+
+        def select_image():
+            """Выбор изображения"""
+            from tkinter import filedialog
+            file_path = filedialog.askopenfilename(
+                title="Выберите изображение",
+                filetypes=[("Image files", "*.jpg *.jpeg *.png *.gif *.bmp")]
+            )
+            if file_path:
+                self.note_image_path = file_path
+                # Показываем только имя файла
+                file_name = file_path.split("/")[-1] if "/" in file_path else file_path.split("\\")[-1]
+                self.note_image_label.configure(text=file_name)
+
+        select_image_btn = ctk.CTkButton(
+            image_frame,
+            text="📁 Выбрать файл",
+            command=select_image,
+            width=120,
+            height=35,
+            fg_color="#4CC9F0",
+            hover_color="#3a9bc8"
+        )
+        select_image_btn.pack(side="right")
+
+        # Кнопка сохранения
+        def save_note():
+            """Сохранение заметки"""
+            note_date_str = self.note_date_var.get()
+            title = self.note_title_entry.get().strip()
+            content = self.note_text_area.get("1.0", "end-1c").strip()
+
+            if not title:
+                self.show_error_message("Введите заголовок заметки!")
+                return
+
+            if not content:
+                self.show_error_message("Введите текст заметки!")
+                return
+
+            try:
+                # Парсим дату
+                try:
+                    day, month, year = map(int, note_date_str.split('.'))
+                    note_date = date(year, month, day)
+                except:
+                    self.show_error_message("Неверный формат даты! Используйте ДД.ММ.ГГГГ")
+                    return
+
+                # Сохраняем заметку
+                note_id = self.db.add_note(note_date, title, content, self.note_image_path)
+                self.show_success_message("Заметка успешно сохранена!")
+
+                # Очищаем форму
+                self.note_title_entry.delete(0, 'end')
+                self.note_text_area.delete("1.0", "end")
+                self.note_image_path = None
+                self.note_image_label.configure(text="Файл не выбран")
+
+                # Обновляем список заметок
+                self.refresh_notes_list()
+
+            except Exception as e:
+                self.show_error_message(f"Ошибка при сохранении: {str(e)}")
+
+        save_btn = ctk.CTkButton(
+            form_card,
+            text="💾 Сохранить заметку",
+            command=save_note,
+            fg_color="#2AA876",
+            hover_color="#218c61",
+            height=45,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            corner_radius=10
+        )
+        save_btn.pack(pady=20, padx=30, fill="x")
+
+    def create_notes_list(self, parent):
+        """Создать список заметок"""
+        # Заголовок
+        list_title = ctk.CTkLabel(
+            parent,
+            text="📋 Ваши заметки",
+            font=ctk.CTkFont(size=18, weight="bold")
+        )
+        list_title.pack(pady=20)
+
+        # Прокручиваемая область
+        self.notes_scroll_frame = ctk.CTkScrollableFrame(parent, fg_color="transparent")
+        self.notes_scroll_frame.pack(fill="both", expand=True, padx=15, pady=10)
+
+        # Загружаем заметки
+        self.refresh_notes_list()
+
+    def refresh_notes_list(self):
+        """Обновить список заметок"""
+        # Очищаем текущий список
+        for widget in self.notes_scroll_frame.winfo_children():
+            widget.destroy()
+
+        # Загружаем заметки из базы
+        notes = self.db.get_all_notes()
+
+        if not notes:
+            # Сообщение, если заметок нет
+            empty_label = ctk.CTkLabel(
+                self.notes_scroll_frame,
+                text="У вас пока нет заметок.\nДобавьте первую заметку!",
+                font=ctk.CTkFont(size=14),
+                text_color="#888888",
+                justify="center"
+            )
+            empty_label.pack(pady=50)
+            return
+
+        # Сортируем заметки по дате (новые сначала)
+        notes.sort(key=lambda x: x[1], reverse=True)
+
+        for note in notes:
+            note_id, note_date, title, content, image_path = note
+            self.create_note_card(note_id, note_date, title, content, image_path)
+
+    def create_note_card(self, note_id, note_date, title, content, image_path):
+        """Создать карточку заметки"""
+        card = ctk.CTkFrame(self.notes_scroll_frame, corner_radius=12, fg_color="#3a3a3a")
+        card.pack(pady=8, padx=5, fill="x")
+
+        # Основная информация
+        info_frame = ctk.CTkFrame(card, fg_color="transparent")
+        info_frame.pack(fill="x", expand=True, padx=15, pady=12)
+
+        # Заголовок и дата
+        header_frame = ctk.CTkFrame(info_frame, fg_color="transparent")
+        header_frame.pack(fill="x")
+
+        title_label = ctk.CTkLabel(
+            header_frame,
+            text=title,
+            font=ctk.CTkFont(size=16, weight="bold"),
+            anchor="w",
+            text_color="#4CC9F0"
+        )
+        title_label.pack(side="left", anchor="w")
+
+        # Форматируем дату
+        try:
+            note_date_obj = datetime.strptime(note_date, "%Y-%m-%d").date()
+            date_str = note_date_obj.strftime("%d.%m.%Y")
+        except:
+            date_str = note_date
+
+        date_label = ctk.CTkLabel(
+            header_frame,
+            text=date_str,
+            font=ctk.CTkFont(size=12),
+            text_color="#888888"
+        )
+        date_label.pack(side="right", anchor="e")
+
+        # Текст заметки (обрезаем если длинный)
+        content_preview = content
+        if len(content) > 100:
+            content_preview = content[:100] + "..."
+
+        content_label = ctk.CTkLabel(
+            info_frame,
+            text=content_preview,
+            font=ctk.CTkFont(size=13),
+            anchor="w",
+            justify="left",
+            text_color="#cccccc",
+            wraplength=350
+        )
+        content_label.pack(fill="x", pady=(8, 0))
+
+        # Индикатор изображения
+        if image_path:
+            image_indicator = ctk.CTkLabel(
+                info_frame,
+                text="🖼️ Есть изображение",
+                font=ctk.CTkFont(size=11),
+                text_color="#FFA500"
+            )
+            image_indicator.pack(anchor="w", pady=(5, 0))
+
+        # Кнопки управления
+        buttons_frame = ctk.CTkFrame(info_frame, fg_color="transparent")
+        buttons_frame.pack(fill="x", pady=(10, 0))
+
+        def view_note():
+            """Просмотр полной заметки"""
+            self.view_note_details(note_id, note_date, title, content, image_path)
+
+        def delete_note():
+            """Удаление заметки"""
+            self.delete_note_confirmation(note_id, card)
+
+        view_btn = ctk.CTkButton(
+            buttons_frame,
+            text="👁️ Просмотреть",
+            command=view_note,
+            width=100,
+            height=30,
+            fg_color="#4CC9F0",
+            hover_color="#3a9bc8",
+            font=ctk.CTkFont(size=11)
+        )
+        view_btn.pack(side="left", padx=(0, 5))
+
+        delete_btn = ctk.CTkButton(
+            buttons_frame,
+            text="🗑️ Удалить",
+            command=delete_note,
+            width=80,
+            height=30,
+            fg_color="transparent",
+            hover_color="#FF6B6B",
+            border_width=1,
+            border_color="#FF6B6B",
+            text_color="#FF6B6B",
+            font=ctk.CTkFont(size=11)
+        )
+        delete_btn.pack(side="left")
+
+    def view_note_details(self, note_id, note_date, title, content, image_path):
+        """Просмотр деталей заметки с отображением изображения"""
+        note_window = ctk.CTkToplevel(self.root)
+        note_window.title(f"Заметка: {title}")
+        note_window.geometry("600x700")
+        note_window.transient(self.root)
+        note_window.grab_set()
+
+        # Центрируем
+        note_window.update_idletasks()
+        x = (note_window.winfo_screenwidth() // 2) - (600 // 2)
+        y = (note_window.winfo_screenheight() // 2) - (700 // 2)
+        note_window.geometry(f"600x700+{x}+{y}")
+
+        main_container = ctk.CTkScrollableFrame(note_window, fg_color="transparent")
+        main_container.pack(fill="both", expand=True, padx=20, pady=20)
+
+        # Форматируем дату
+        try:
+            note_date_obj = datetime.strptime(note_date, "%Y-%m-%d").date()
+            date_str = note_date_obj.strftime("%d %B %Y")
+        except:
+            date_str = note_date
+
+        # Дата
+        date_label = ctk.CTkLabel(
+            main_container,
+            text=f"📅 {date_str}",
+            font=ctk.CTkFont(size=14),
+            text_color="#888888"
+        )
+        date_label.pack(anchor="w", pady=(0, 10))
+
+        # Заголовок
+        title_label = ctk.CTkLabel(
+            main_container,
+            text=title,
+            font=ctk.CTkFont(size=22, weight="bold"),
+            text_color="#4CC9F0",
+            wraplength=550
+        )
+        title_label.pack(anchor="w", pady=(0, 20))
+
+        # Текст заметки
+        text_frame = ctk.CTkFrame(main_container, fg_color="#2b2b2b", corner_radius=10)
+        text_frame.pack(fill="x", pady=10)
+
+        content_label = ctk.CTkLabel(
+            text_frame,
+            text=content,
+            font=ctk.CTkFont(size=14),
+            text_color="#ffffff",
+            justify="left",
+            wraplength=550
+        )
+        content_label.pack(padx=15, pady=15, anchor="w")
+
+        # Изображение (если есть)
+        if image_path and os.path.exists(image_path):
+            if HAS_PIL:
+                try:
+                    # Загружаем изображение
+                    image = Image.open(image_path)
+
+                    # Получаем размеры окна для масштабирования
+                    max_width = 550  # Максимальная ширина с учетом отступов
+                    max_height = 300  # Максимальная высота для изображения
+
+                    # Масштабируем изображение с сохранением пропорций
+                    image_ratio = image.width / image.height
+                    target_ratio = max_width / max_height
+
+                    if image_ratio > target_ratio:
+                        # Широкое изображение
+                        new_width = max_width
+                        new_height = int(max_width / image_ratio)
+                    else:
+                        # Высокое изображение
+                        new_height = max_height
+                        new_width = int(max_height * image_ratio)
+
+                    # Масштабируем
+                    image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+                    # Конвертируем для CTk
+                    ctk_image = ctk.CTkImage(
+                        light_image=image,
+                        dark_image=image,
+                        size=(new_width, new_height)
+                    )
+
+                    # Создаем фрейм для изображения
+                    image_frame = ctk.CTkFrame(main_container, fg_color="#3a3a3a", corner_radius=10)
+                    image_frame.pack(fill="x", pady=10)
+
+                    # Заголовок изображения
+                    image_label_title = ctk.CTkLabel(
+                        image_frame,
+                        text="🖼️ Прикрепленное изображение:",
+                        font=ctk.CTkFont(size=12, weight="bold"),
+                        text_color="#FFA500"
+                    )
+                    image_label_title.pack(pady=(10, 5))
+
+                    # Отображаем изображение
+                    image_label = ctk.CTkLabel(
+                        image_frame,
+                        image=ctk_image,
+                        text=""
+                    )
+                    image_label.pack(pady=10)
+
+                    # Информация о файле
+                    file_info = ctk.CTkLabel(
+                        image_frame,
+                        text=f"Файл: {os.path.basename(image_path)}",
+                        font=ctk.CTkFont(size=10),
+                        text_color="#888888"
+                    )
+                    file_info.pack(pady=(0, 10))
+
+                except Exception as e:
+                    self.show_image_error(main_container, image_path, str(e))
+            else:
+                self.show_image_error(main_container, image_path, "Pillow не установлен")
+
+        # Кнопка закрытия
+        close_btn = ctk.CTkButton(
+            main_container,
+            text="Закрыть",
+            command=note_window.destroy,
+            fg_color="#666666",
+            hover_color="#555555",
+            height=40
+        )
+        close_btn.pack(pady=20, fill="x")
+
+    def show_image_error(self, parent, image_path, error_message):
+        """Показать сообщение об ошибке загрузки изображения"""
+        error_frame = ctk.CTkFrame(parent, fg_color="#3a3a3a", corner_radius=10)
+        error_frame.pack(fill="x", pady=10)
+
+        error_label = ctk.CTkLabel(
+            error_frame,
+            text=f"❌ Не удалось загрузить изображение:\n{error_message}",
+            font=ctk.CTkFont(size=12),
+            text_color="#FF6B6B",
+            justify="left"
+        )
+        error_label.pack(padx=15, pady=15)
+
+        # Показываем путь к файлу
+        path_label = ctk.CTkLabel(
+            error_frame,
+            text=f"Путь: {image_path}",
+            font=ctk.CTkFont(size=10),
+            text_color="#888888"
+        )
+        path_label.pack(pady=(0, 10))
+
+    def delete_note_confirmation(self, note_id, note_card):
+        """Подтверждение удаления заметки"""
+
+        def confirm_delete():
+            self.db.delete_note(note_id)
+            note_card.destroy()
+            self.show_success_message("Заметка успешно удалена!")
+
+        confirm_dialog = ctk.CTkToplevel(self.root)
+        confirm_dialog.title("Подтверждение удаления")
+        confirm_dialog.geometry("400x200")
+        confirm_dialog.transient(self.root)
+        confirm_dialog.grab_set()
+
+        # Центрируем
+        confirm_dialog.update_idletasks()
+        x = (confirm_dialog.winfo_screenwidth() // 2) - (400 // 2)
+        y = (confirm_dialog.winfo_screenheight() // 2) - (200 // 2)
+        confirm_dialog.geometry(f"400x200+{x}+{y}")
+
+        main_frame = ctk.CTkFrame(confirm_dialog, fg_color="#2b2b2b", corner_radius=15)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+        message_label = ctk.CTkLabel(
+            main_frame,
+            text="Вы уверены, что хотите удалить эту заметку?",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color="#ffffff",
+            wraplength=350
+        )
+        message_label.pack(pady=20)
+
+        buttons_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        buttons_frame.pack(pady=15)
+
+        delete_btn = ctk.CTkButton(
+            buttons_frame,
+            text="🗑️ Удалить",
+            command=lambda: [confirm_delete(), confirm_dialog.destroy()],
+            fg_color="#FF6B6B",
+            hover_color="#e05555",
+            width=100
+        )
+        delete_btn.pack(side="left", padx=10)
+
+        cancel_btn = ctk.CTkButton(
+            buttons_frame,
+            text="❌ Отмена",
+            command=confirm_dialog.destroy,
+            fg_color="#666666",
+            hover_color="#555555",
+            width=100
+        )
+        cancel_btn.pack(side="left", padx=10)
 
     def open_day_habits(self, selected_date):
         """Открыть окно с привычками для выбранного дня"""
