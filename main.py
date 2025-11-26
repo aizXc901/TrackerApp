@@ -13,7 +13,7 @@ except ImportError:
 
 
 class ModernCalendarWidget:
-    """Современный виджет календаря с улучшенным дизайном"""
+    """Современный виджет календаря"""
 
     def __init__(self, parent, on_date_select=None):
         self.parent = parent
@@ -99,7 +99,6 @@ class ModernCalendarWidget:
 
     def create_week_days(self):
         """Создание заголовков дней недели"""
-        # Убираем старый фрейм, если он есть
         if hasattr(self, 'days_header_frame'):
             self.days_header_frame.destroy()
 
