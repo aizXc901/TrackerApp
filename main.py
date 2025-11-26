@@ -1,4 +1,5 @@
 import customtkinter as ctk
+from database import Database
 from datetime import datetime, date, timedelta
 import calendar
 from typing import Optional
@@ -135,12 +136,19 @@ class ModernCalendarWidget:
         self.update_calendar()
 
     def update_calendar(self):
-        """Обновление календаря"""
+        """Обновление календаря с цветовым выделением привычек"""
         for widget in self.days_frame.winfo_children():
             widget.destroy()
 
         cal = calendar.monthcalendar(self.current_date.year, self.current_date.month)
         today = date.today()
+
+        # Получаем данные о привычках для цветового выделения
+        try:
+            db = Database()
+            habits = db.get_all_habits()
+        except:
+            habits = []
 
         # Создаем grid-сетку
         for row_idx, week in enumerate(cal):
@@ -162,32 +170,59 @@ class ModernCalendarWidget:
                 is_selected = (self.selected_date == current_date)
                 is_weekend = current_date.weekday() >= 5
 
-                # Стилизация
+                # Определяем статус привычек для этой даты
+                habit_status = self.get_day_habit_status(current_date, habits)
+
+                # Стилизация на основе статуса привычек
                 if is_selected:
                     fg_color = "#4CC9F0"
                     text_color = "#ffffff"
+                    emoji = ""
                 elif is_today:
                     fg_color = "#FFEB3B"
                     text_color = "#000000"
+                    emoji = "📅"
+                elif habit_status == "excellent":  # Все хорошие привычки выполнены
+                    fg_color = "#2AA876"  # Зеленый для достижений
+                    text_color = "#ffffff"
+                    emoji = "🎉"
+                elif habit_status == "good":  # Большинство хороших привычек выполнено
+                    fg_color = "#4CC9F0"  # Голубой для хорошего прогресса
+                    text_color = "#ffffff"
+                    emoji = "😊"
+                elif habit_status == "bad":  # Выполнены плохие привычки
+                    fg_color = "#FF6B6B"  # Красный для разочарования
+                    text_color = "#ffffff"
+                    emoji = "😔"
+                elif habit_status == "mixed":  # Смешанный результат
+                    fg_color = "#FFA500"  # Оранжевый для смешанных результатов
+                    text_color = "#000000"
+                    emoji = "😐"
                 elif is_weekend:
                     fg_color = "#3a3a3a"
                     text_color = "#FF6B6B"
+                    emoji = "🌴"
                 else:
                     fg_color = "#2b2b2b"
                     text_color = "#ffffff"
+                    emoji = ""
+
+                # Формируем текст дня
+                day_text = f"{day}\n{emoji}" if emoji else str(day)
 
                 # Создаем кнопку
                 day_btn = ctk.CTkButton(
                     self.days_frame,
-                    text=str(day),
+                    text=day_text,
                     fg_color=fg_color,
                     hover_color=fg_color,
                     text_color=text_color,
-                    font=ctk.CTkFont(weight="bold" if is_today else "normal"),
+                    font=ctk.CTkFont(weight="bold" if is_today else "normal", size=10 if emoji else 12),
                     width=45,
                     height=45,
                     corner_radius=22,
-                    border_width=0,
+                    border_width=2 if habit_status in ["excellent", "bad"] else 0,
+                    border_color="#FFD700" if habit_status == "excellent" else "#FF4444",
                     anchor="center"
                 )
                 day_btn.grid(row=row_idx, column=col_idx, padx=2, pady=2)
@@ -195,6 +230,53 @@ class ModernCalendarWidget:
                 # Привязываем команду
                 if self.on_date_select:
                     day_btn.configure(command=lambda d=current_date: self.select_date(d))
+
+    def get_day_habit_status(self, check_date, habits):
+        """Определяет статус привычек для указанной даты"""
+        if not habits:
+            return "neutral"
+
+        try:
+            # Используем переданные привычки вместо загрузки из базы
+            develop_habits = [h for h in habits if h[3] == "develop"]
+            quit_habits = [h for h in habits if h[3] == "quit"]
+
+            completed_develop = 0
+            completed_quit = 0
+
+            # Создаем временное соединение для проверки выполнений
+            temp_db = Database()
+
+            # Считаем выполненные хорошие привычки
+            for habit in develop_habits:
+                if temp_db.check_habit_completion(habit[0], check_date):
+                    completed_develop += 1
+
+            # Считаем выполненные плохие привычки
+            for habit in quit_habits:
+                if temp_db.check_habit_completion(habit[0], check_date):
+                    completed_quit += 1
+
+            total_develop = len(develop_habits)
+            total_quit = len(quit_habits)
+
+            # Определяем статус дня
+            if total_develop > 0 and completed_develop == total_develop and completed_quit == 0:
+                return "excellent"
+            elif total_develop > 0 and completed_develop >= total_develop * 0.7 and completed_quit == 0:
+                return "good"
+            elif completed_quit > 0 and completed_develop == 0:
+                return "bad"
+            elif completed_quit > 0 or (completed_develop > 0 and completed_quit > 0):
+                return "mixed"
+            elif completed_develop > 0:
+                return "good"
+            else:
+                return "neutral"
+
+        except Exception as e:
+            print(f"Ошибка при получении статуса привычек: {e}")
+            return "neutral"
 
     def select_date(self, selected_date):
         """Выбор даты"""
@@ -2088,40 +2170,59 @@ class ModernHabitTrackerApp:
             self.show_info_message("У вас пока нет привычек. Добавьте первую привычку!")
             return
 
-        # Увеличиваем высоту окна для лучшего отображения кнопок
+        # Увеличиваем размер окна для лучшего отображения
         day_window = ctk.CTkToplevel(self.root)
         day_window.title(f"Привычки за {selected_date}")
-        day_window.geometry("500x750")  # Увеличили высоту с 700 до 750
+        day_window.geometry("600x900")  # Увеличили ширину и высоту
         day_window.transient(self.root)
         day_window.grab_set()
 
         # Центрируем окно
         day_window.update_idletasks()
-        x = (day_window.winfo_screenwidth() // 2) - (500 // 2)
-        y = (day_window.winfo_screenheight() // 2) - (750 // 2)
-        day_window.geometry(f"500x750+{x}+{y}")
+        x = (day_window.winfo_screenwidth() // 2) - (600 // 2)
+        y = (day_window.winfo_screenheight() // 2) - (900 // 2)
+        day_window.geometry(f"600x900+{x}+{y}")
 
-        main_container = ctk.CTkFrame(day_window, fg_color="transparent")
-        main_container.pack(fill="both", expand=True, padx=20, pady=20)
+        # Основной контейнер с прокруткой
+        main_scroll = ctk.CTkScrollableFrame(day_window, fg_color="transparent")
+        main_scroll.pack(fill="both", expand=True, padx=20, pady=20)
 
         title_label = ctk.CTkLabel(
-            main_container,
+            main_scroll,
             text=f"Привычки за {selected_date}",
             font=ctk.CTkFont(size=20, weight="bold")
         )
         title_label.pack(pady=15)
 
-        scroll_frame = ctk.CTkScrollableFrame(main_container, height=450, corner_radius=15)
-        scroll_frame.pack(pady=15, fill="both", expand=True)
+        # Контейнер для привычек с фиксированной высотой
+        habits_container = ctk.CTkFrame(main_scroll, fg_color="transparent")
+        habits_container.pack(fill="both", expand=True, pady=10)
+
+        # Прокручиваемая область для привычек
+        scroll_frame = ctk.CTkScrollableFrame(habits_container, height=500)  # Увеличили высоту
+        scroll_frame.pack(fill="both", expand=True, pady=10)
 
         checkboxes = {}
 
+        # Создаем все привычки
         for habit in habits:
             habit_id, name, description, habit_type, points, reminder_time, created_date = habit
             is_completed = self.db.check_habit_completion(habit_id, selected_date)
 
             habit_frame = ctk.CTkFrame(scroll_frame, corner_radius=10)
             habit_frame.pack(pady=8, padx=5, fill="x")
+
+            # Цветовая индикация в зависимости от типа привычки
+            if habit_type == "develop":
+                frame_color = "#1e3a28"
+                icon = "✅"
+                status_text = "Выполнено" if is_completed else "Не выполнено"
+            else:
+                frame_color = "#3a1e1e"
+                icon = "❌"
+                status_text = "Устояли" if not is_completed else "Поддались"
+
+            habit_frame.configure(fg_color=frame_color)
 
             checkbox_var = ctk.BooleanVar(value=is_completed)
             checkbox = ctk.CTkCheckBox(
@@ -2130,7 +2231,9 @@ class ModernHabitTrackerApp:
                 variable=checkbox_var,
                 width=25,
                 height=25,
-                corner_radius=6
+                corner_radius=6,
+                fg_color="#2AA876" if habit_type == "develop" else "#FF6B6B",
+                hover_color="#218c61" if habit_type == "develop" else "#e05555"
             )
             checkbox.pack(side="left", padx=15, pady=10)
             checkboxes[habit_id] = checkbox_var
@@ -2138,10 +2241,10 @@ class ModernHabitTrackerApp:
             info_frame = ctk.CTkFrame(habit_frame, fg_color="transparent")
             info_frame.pack(side="left", fill="x", expand=True, padx=10, pady=10)
 
-            icon = "✅" if habit_type == "develop" else "❌"
-            color = "#2AA876" if habit_type == "develop" else "#FF6B6B"
+            # Основная информация
+            habit_text = f"{icon} {name}\n"
+            habit_text += f"📊 {status_text} | 💰 {points} баллов"
 
-            habit_text = f"{icon} {name}"
             if description:
                 habit_text += f"\n📝 {description}"
 
@@ -2151,10 +2254,77 @@ class ModernHabitTrackerApp:
                 font=ctk.CTkFont(size=13),
                 anchor="w",
                 justify="left",
-                text_color=color
+                text_color="#ffffff",
+                wraplength=400  # Ограничиваем ширину текста
             )
             habit_label.pack(fill="x")
 
+            # Мотивационное сообщение
+            if habit_type == "develop" and is_completed:
+                motivation_label = ctk.CTkLabel(
+                    info_frame,
+                    text="🎉 Отличная работа! Продолжайте в том же духе!",
+                    font=ctk.CTkFont(size=11),
+                    text_color="#FFD700"
+                )
+                motivation_label.pack(fill="x", pady=(5, 0))
+            elif habit_type == "quit" and is_completed:
+                motivation_label = ctk.CTkLabel(
+                    info_frame,
+                    text="😔 Не расстраивайтесь! Завтра получится лучше!",
+                    font=ctk.CTkFont(size=11),
+                    text_color="#FFA500"
+                )
+                motivation_label.pack(fill="x", pady=(5, 0))
+
+        # Функция для обновления статистики
+        def update_day_stats():
+            completed_develop = 0
+            completed_quit = 0
+            total_develop = 0
+            total_quit = 0
+
+            for habit in habits:
+                habit_id, name, description, habit_type, points, reminder_time, created_date = habit
+                is_checked = checkboxes[habit_id].get()
+
+                if habit_type == "develop":
+                    total_develop += 1
+                    if is_checked:
+                        completed_develop += 1
+                else:
+                    total_quit += 1
+                    if not is_checked:
+                        completed_quit += 1
+
+            stats_text = f"📊 Статистика дня:\n"
+            stats_text += f"✅ Привычки развития: {completed_develop}/{total_develop}\n"
+            stats_text += f"❌ Привычки избавления: {completed_quit}/{total_quit}"
+
+            return stats_text
+
+        # Обновляем статистику при изменении чекбоксов
+        def on_checkbox_change(*args):
+            stats_label.configure(text=update_day_stats())
+
+        # Привязываем обновление статистики ко всем чекбоксам
+        for checkbox_var in checkboxes.values():
+            checkbox_var.trace('w', on_checkbox_change)
+
+        # Статистика
+        stats_frame = ctk.CTkFrame(main_scroll, fg_color="#2b2b2b", corner_radius=10)
+        stats_frame.pack(pady=15, padx=10, fill="x")
+
+        stats_label = ctk.CTkLabel(
+            stats_frame,
+            text=update_day_stats(),
+            font=ctk.CTkFont(size=12),
+            text_color="#4CC9F0",
+            justify="left"
+        )
+        stats_label.pack(padx=15, pady=15)
+
+        # Функция сохранения
         def save_habits():
             changes_made = False
             for habit_id, checkbox_var in checkboxes.items():
@@ -2173,11 +2343,14 @@ class ModernHabitTrackerApp:
                 self.show_success_message("Привычки успешно сохранены!")
                 self.update_sidebar_stats()
 
-        # Кнопки внизу - убедимся, что они видны
-        buttons_frame = ctk.CTkFrame(main_container, fg_color="transparent")
-        buttons_frame.pack(side="bottom", pady=20, fill="x", padx=50)  # Используем side="bottom"
+        # Кнопки управления - отдельный фрейм внизу
+        buttons_container = ctk.CTkFrame(main_scroll, fg_color="transparent")
+        buttons_container.pack(side="bottom", pady=20, fill="x")
 
-        # Настройка сетки
+        buttons_frame = ctk.CTkFrame(buttons_container, fg_color="transparent")
+        buttons_frame.pack(fill="x", padx=20)
+
+        # Настройка сетки для кнопок
         buttons_frame.grid_columnconfigure(0, weight=1)
         buttons_frame.grid_columnconfigure(1, weight=1)
 
@@ -2204,6 +2377,9 @@ class ModernHabitTrackerApp:
             corner_radius=10
         )
         cancel_btn.grid(row=0, column=1, padx=(10, 0), sticky="ew")
+
+        # Принудительно обновляем окно для корректного отображения
+        day_window.update()
 
     def show_achievements(self):
         """Показать систему достижений"""
@@ -2593,6 +2769,7 @@ class ModernHabitTrackerApp:
 
     def show_all_habits(self):
         """Показать все привычки с возможностью удаления"""
+        from database import Database  # ДОБАВЬТЕ ЭТОТ ИМПОРТ
         habits = self.db.get_all_habits()
 
         if not habits:
