@@ -321,8 +321,9 @@ class ModernHabitTrackerApp:
         buttons = [
             ("📅", "Календарь", self.show_calendar),
             ("➕", "Новая привычка", self.add_habit),
-            ("📝", "Заметки", self.show_notes),  # <-- ДОБАВЬТЕ ЭТУ СТРОЧКУ
-            ("📊", "Отчеты", self.show_reports)
+            ("📝", "Заметки", self.show_notes),
+            ("📊", "Отчеты", self.show_reports),
+            ("🏆", "Достижения", self.show_achievements)  # <-- ДОБАВЛЕНО
         ]
 
         for icon, text, command in buttons:
@@ -878,6 +879,43 @@ class ModernHabitTrackerApp:
         )
         quit_radio.pack(side="left")
 
+        # +++ ДОБАВЛЕНО: Поле для ввода баллов +++
+        ctk.CTkLabel(
+            form_card,
+            text="💰 Баллы за выполнение:",
+            font=ctk.CTkFont(size=14, weight="bold")
+        ).pack(pady=(20, 5), anchor="w", padx=30)
+
+        points_frame = ctk.CTkFrame(form_card, fg_color="transparent")
+        points_frame.pack(fill="x", padx=30, pady=5)
+
+        points_var = ctk.StringVar(value="1")
+
+        points_combo = ctk.CTkComboBox(
+            points_frame,
+            values=["1", "2", "3", "5", "10"],
+            variable=points_var,
+            width=120,
+            state="readonly"
+        )
+        points_combo.pack(side="left")
+
+        ctk.CTkLabel(
+            points_frame,
+            text="баллов",
+            font=ctk.CTkFont(size=12),
+            text_color="#888888"
+        ).pack(side="left", padx=(10, 0))
+
+        # Подсказка
+        points_hint = ctk.CTkLabel(
+            form_card,
+            text="💡 Чем важнее привычка, тем больше баллов стоит назначать",
+            font=ctk.CTkFont(size=11),
+            text_color="#4CC9F0"
+        )
+        points_hint.pack(anchor="w", padx=30, pady=(0, 10))
+
         # Напоминание (только для привычек развития)
         ctk.CTkLabel(
             form_card,
@@ -958,6 +996,11 @@ class ModernHabitTrackerApp:
             name = name_entry.get().strip()
             description = desc_entry.get().strip()
             habit_type = habit_type_var.get()
+            # +++ ДОБАВЛЕНО: Получаем баллы +++
+            try:
+                points = int(points_var.get())
+            except ValueError:
+                points = 1
 
             # Формируем время напоминания
             reminder_time = None
@@ -969,7 +1012,7 @@ class ModernHabitTrackerApp:
                 return
 
             try:
-                habit_id = self.db.add_habit(name, description, habit_type, 1, reminder_time)
+                habit_id = self.db.add_habit(name, description, habit_type, points, reminder_time)
                 self.show_success_message("Привычка успешно добавлена!")
                 self.update_sidebar_stats()
                 self.show_welcome_screen()
@@ -2161,6 +2204,297 @@ class ModernHabitTrackerApp:
             corner_radius=10
         )
         cancel_btn.grid(row=0, column=1, padx=(10, 0), sticky="ew")
+
+    def show_achievements(self):
+        """Показать систему достижений"""
+        for widget in self.main_content.winfo_children():
+            widget.destroy()
+
+        main_container = ctk.CTkFrame(self.main_content, fg_color="transparent")
+        main_container.pack(fill="both", expand=True, padx=20, pady=20)
+
+        # Заголовок
+        title_label = ctk.CTkLabel(
+            main_container,
+            text="🏆 Система Достижений",
+            font=ctk.CTkFont(size=24, weight="bold")
+        )
+        title_label.pack(pady=20)
+
+        # Общее количество баллов
+        total_points = self.db.calculate_total_points()
+
+        # Карточка общего прогресса
+        progress_card = ctk.CTkFrame(main_container, corner_radius=20, fg_color="#2b2b2b")
+        progress_card.pack(pady=20, padx=50, fill="x")
+
+        ctk.CTkLabel(
+            progress_card,
+            text="💰 Ваш общий счет",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color="#FFD700"
+        ).pack(pady=15)
+
+        points_label = ctk.CTkLabel(
+            progress_card,
+            text=f"{total_points} баллов",
+            font=ctk.CTkFont(size=32, weight="bold"),
+            text_color="#4CC9F0"
+        )
+        points_label.pack(pady=10)
+
+        # Уровень пользователя
+        level = total_points // 100 + 1
+        level_progress = total_points % 100
+
+        ctk.CTkLabel(
+            progress_card,
+            text=f"Уровень {level}",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            text_color="#FFA500"
+        ).pack(pady=5)
+
+        # Прогресс бар до следующего уровня
+        progress_frame = ctk.CTkFrame(progress_card, fg_color="transparent")
+        progress_frame.pack(pady=15, padx=30, fill="x")
+
+        ctk.CTkLabel(
+            progress_frame,
+            text=f"До уровня {level + 1}: {level_progress}/100 баллов",
+            font=ctk.CTkFont(size=12),
+            text_color="#888888"
+        ).pack(anchor="w")
+
+        progress_bar = ctk.CTkProgressBar(progress_frame, height=20, corner_radius=10)
+        progress_bar.pack(fill="x", pady=5)
+        progress_bar.set(level_progress / 100)
+
+        # Достижения
+        achievements_frame = ctk.CTkFrame(main_container, fg_color="transparent")
+        achievements_frame.pack(fill="both", expand=True, pady=20)
+
+        ctk.CTkLabel(
+            achievements_frame,
+            text="🎯 Ваши достижения",
+            font=ctk.CTkFont(size=20, weight="bold")
+        ).pack(pady=10)
+
+        # Создаем сетку достижений
+        self.create_achievements_grid(achievements_frame, total_points)
+
+    def create_achievements_grid(self, parent, total_points):
+        """Создать сетку достижений"""
+        achievements = [
+            {
+                "id": "first_habit",
+                "title": "Первые шаги 🌱",
+                "description": "Добавьте первую привычку",
+                "icon": "🌱",
+                "condition": lambda: len(self.db.get_all_habits()) >= 1,
+                "reward": 10,
+                "color": "#2AA876"
+            },
+            {
+                "id": "week_streak",
+                "title": "Неделя дисциплины 📅",
+                "description": "Отмечайте привычки 7 дней подряд",
+                "icon": "📅",
+                "condition": lambda: self.check_week_streak(),
+                "reward": 50,
+                "color": "#4CC9F0"
+            },
+            {
+                "id": "habit_master",
+                "title": "Мастер привычек 🎯",
+                "description": "Выполните 50 привычек",
+                "icon": "🎯",
+                "condition": lambda: self.db.get_total_completions_count() >= 50,
+                "reward": 100,
+                "color": "#FFA500"
+            },
+            {
+                "id": "points_100",
+                "title": "Стартовый капитал 💰",
+                "description": "Заработайте 100 баллов",
+                "icon": "💰",
+                "condition": lambda: total_points >= 100,
+                "reward": 25,
+                "color": "#9C27B0"
+            },
+            {
+                "id": "points_500",
+                "title": "Опытный игрок 🏅",
+                "description": "Заработайте 500 баллов",
+                "icon": "🏅",
+                "condition": lambda: total_points >= 500,
+                "reward": 100,
+                "color": "#E91E63"
+            },
+            {
+                "id": "balanced_life",
+                "title": "Баланс в жизни ⚖️",
+                "description": "Имейте привычки обоих типов",
+                "icon": "⚖️",
+                "condition": lambda: self.check_balanced_habits(),
+                "reward": 30,
+                "color": "#2AA876"
+            },
+            {
+                "id": "early_bird",
+                "title": "Ранняя пташка 🐦",
+                "description": "Отмечайте привычки до 8 утра",
+                "icon": "🐦",
+                "condition": lambda: self.check_early_bird(),
+                "reward": 40,
+                "color": "#FFD700"
+            },
+            {
+                "id": "weekend_warrior",
+                "title": "Воин выходного дня 🛡️",
+                "description": "Выполняйте привычки в выходные",
+                "icon": "🛡️",
+                "condition": lambda: self.check_weekend_habits(),
+                "reward": 35,
+                "color": "#FF6B6B"
+            }
+        ]
+
+        # Сетка 2x4
+        grid_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        grid_frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+        for i in range(2):  # строки
+            grid_frame.grid_rowconfigure(i, weight=1)
+            for j in range(4):  # столбцы
+                grid_frame.grid_columnconfigure(j, weight=1)
+
+        for idx, achievement in enumerate(achievements):
+            row = idx // 4
+            col = idx % 4
+
+            is_unlocked = achievement["condition"]()
+
+            achievement_card = self.create_achievement_card(
+                grid_frame,
+                achievement,
+                is_unlocked
+            )
+            achievement_card.grid(
+                row=row,
+                column=col,
+                padx=10,
+                pady=10,
+                sticky="nsew"
+            )
+
+    def create_achievement_card(self, parent, achievement, is_unlocked):
+        """Создать карточку достижения"""
+        if is_unlocked:
+            # Разблокированное достижение
+            card = ctk.CTkFrame(
+                parent,
+                corner_radius=15,
+                fg_color=achievement["color"],
+                border_width=2,
+                border_color="#FFD700"
+            )
+        else:
+            # Заблокированное достижение
+            card = ctk.CTkFrame(
+                parent,
+                corner_radius=15,
+                fg_color="#3a3a3a",
+                border_width=1,
+                border_color="#555555"
+            )
+
+        card.grid_propagate(False)
+        card.configure(height=180)
+
+        # Иконка
+        icon_label = ctk.CTkLabel(
+            card,
+            text=achievement["icon"],
+            font=ctk.CTkFont(size=24)
+        )
+        icon_label.pack(pady=(20, 5))
+
+        # Название
+        title_label = ctk.CTkLabel(
+            card,
+            text=achievement["title"],
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color="#ffffff" if is_unlocked else "#888888",
+            wraplength=150
+        )
+        title_label.pack(pady=5, padx=10)
+
+        # Описание
+        desc_label = ctk.CTkLabel(
+            card,
+            text=achievement["description"],
+            font=ctk.CTkFont(size=11),
+            text_color="#ffffff" if is_unlocked else "#666666",
+            wraplength=150
+        )
+        desc_label.pack(pady=5, padx=10)
+
+        # Награда
+        reward_text = f"🎁 {achievement['reward']} баллов"
+        if not is_unlocked:
+            reward_text = "🔒 Заблокировано"
+
+        reward_label = ctk.CTkLabel(
+            card,
+            text=reward_text,
+            font=ctk.CTkFont(size=10, weight="bold"),
+            text_color="#FFD700" if is_unlocked else "#555555"
+        )
+        reward_label.pack(pady=(10, 15))
+
+        return card
+
+    def check_week_streak(self):
+        """Проверить недельную серию"""
+        try:
+            # Простая проверка - есть ли выполнения за последние 7 дней
+            habits = self.db.get_all_habits()
+            if not habits:
+                return False
+
+            today = date.today()
+            streak_days = 0
+
+            for i in range(7):
+                check_date = today - timedelta(days=i)
+                completed = self.get_completed_habits_count(habits, check_date)
+                if completed > 0:
+                    streak_days += 1
+
+            return streak_days >= 7
+        except:
+            return False
+
+    def check_balanced_habits(self):
+        """Проверить наличие привычек обоих типов"""
+        habits = self.db.get_all_habits()
+        if not habits:
+            return False
+
+        has_develop = any(habit[3] == "develop" for habit in habits)
+        has_quit = any(habit[3] == "quit" for habit in habits)
+
+        return has_develop and has_quit
+
+    def check_early_bird(self):
+        """Проверить выполнение привычек рано утром"""
+        # Упрощенная проверка - всегда False для демонстрации
+        return False
+
+    def check_weekend_habits(self):
+        """Проверить выполнение привычек в выходные"""
+        # Упрощенная проверка - всегда False для демонстрации
+        return False
 
     def get_completed_habits_count(self, habits, current_date):
         """Подсчет количества выполненных привычек за день"""

@@ -50,6 +50,16 @@ class Database:
         conn.commit()
         conn.close()
 
+    def get_total_completions_count(self):
+        """Получить общее количество выполнений всех привычек"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        cursor.execute('SELECT COUNT(*) FROM habit_completions')
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count
+
     def add_habit(self, name, description, habit_type, points=1, reminder_time=None):
         """Добавление новой привычки"""
         conn = sqlite3.connect(self.db_path)
